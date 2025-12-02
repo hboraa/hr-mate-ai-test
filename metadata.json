@@ -1,0 +1,5 @@
+{
+  "name": "HR-Mate AI",
+  "description": "An intelligent, personalized HR assistant for employee inquiries, onboarding, and administrative automation using Gemini API.",
+  "requestFramePermissions": []
+}
