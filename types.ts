@@ -27,7 +27,7 @@ export interface Policy {
 
 export interface StructuredResponse {
   summary: string;
-  details?: string;
+  detail?: string;
   relatedPolicyId?: string;
   relatedPolicyName?: string;
   suggestions?: string[];
@@ -58,4 +58,12 @@ export interface EmployeeSearchResult {
 export interface AnalyticsData {
   category: string;
   count: number;
+}
+
+export interface Notice {
+  id: string;
+  title: string;
+  date: string;
+  important: boolean;
+  content: string;
 }

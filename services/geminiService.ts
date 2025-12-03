@@ -10,7 +10,7 @@ const modelId = "gemini-2.5-flash";
 
 const getLeaveBalanceTool: FunctionDeclaration = {
   name: "getLeaveBalance",
-  description: "Get the current remaining leave balance for the user.",
+  description: "REQUIRED TOOL: You MUST call this function whenever the user asks about their leave balance, remaining annual leave, or how many vacation days they have left (연차, 잔여일, etc.). This is the ONLY way to retrieve the user's actual leave balance. DO NOT respond without calling this tool first for balance questions.",
 };
 
 const getPolicyTool: FunctionDeclaration = {
@@ -80,7 +80,11 @@ const responseSchema: Schema = {
   properties: {
     summary: {
       type: Type.STRING,
-      description: "A 3-line summary of the answer."
+      description: "A very concise 3-line summary of the answer."
+    },
+    detail: {
+      type: Type.STRING,
+      description: "The full, comprehensive detailed explanation in markdown format."
     },
     relatedPolicyId: {
       type: Type.STRING,
@@ -96,7 +100,7 @@ const responseSchema: Schema = {
       description: "3 short follow-up questions the user might ask next."
     }
   },
-  required: ["summary"]
+  required: ["summary", "detail"]
 };
 
 // --- System Instruction ---
@@ -104,22 +108,42 @@ const responseSchema: Schema = {
 const policySummaries = MOCK_POLICIES.map(p => `- ${p.title} (ID: ${p.id}): ${p.summary}`).join('\n');
 
 const systemInstruction = `
-You are 'HR Mate', a helpful and professional AI HR Assistant for TechCorp.
-Current User: ${CURRENT_USER.name} (Role: ${CURRENT_USER.role}, Dept: ${CURRENT_USER.department}).
+You are 'HR Mate', an AI HR Assistant for TechCorp with FULL ACCESS to company systems via tools.
+Current User: ${CURRENT_USER.name} (${CURRENT_USER.department}).
 
-Your goal is to assist employees with internal regulations, benefits, and administrative tasks.
+⚠️ CRITICAL: You ARE connected to TechCorp's HR system. You CAN and MUST access user information via the provided tools.
 
-AVAILABLE POLICIES (Use 'getPolicy' tool to read full details if needed):
+MANDATORY TOOL USAGE:
+- When user asks about leave balance (연차, 잔여일, "며칠 남았어", "How many days"): Call getLeaveBalance tool IMMEDIATELY
+- When user asks about policies: Call getPolicy tool
+- When user asks about employees: Call searchEmployee tool
+
+EXAMPLE - Leave Balance Question:
+User: "나 연차 며칠 남았어?"
+You MUST:
+1. Call getLeaveBalance() tool → Returns { balance: 12.5, unit: 'days' }
+2. Return JSON: { "summary": "12.5일", "relatedPolicyId": "leave-01" }
+
+DO NOT say you cannot access information. You HAVE access via tools.
+
+AVAILABLE POLICIES:
 ${policySummaries}
 
-GUIDELINES:
-1. **Personalization**: Always address the user politely.
-2. **Accuracy**: Base your answers strictly on the policy context.
-3. **Format**: You MUST return a JSON object with a 'summary', 'relatedPolicyId' (if any), 'relatedPolicyName', and 'suggestions'.
-4. **Actionable**: If a user wants to apply for leave, use 'draftLeaveRequest'.
-5. **JSON Only**: Do not wrap response in markdown blocks. Just return the raw JSON string.
+RESPONSE SCENARIOS:
 
-When the user asks for "details" or specific clauses, CALL the 'getPolicy' tool first.
+1. **Company Policy Inquiries**:
+   - Summary: 3 lines + "자세한 내용은 자세히 보기 버튼을 클릭해주세요."
+   - Set relatedPolicyId to the specific policy ID
+   - May omit detail if policy document is sufficient
+
+2. **Simple Questions** (greetings, thanks, casual):
+   - Short Answer (< 10 lines): Full answer in summary, no detail, no relatedPolicyId
+   - Long Answer: Summary (3 sentences) + detail field
+
+GENERAL RULES:
+- Return ONLY raw JSON (no markdown)
+- Use 'detail' (singular) for detailed text
+- NEVER refuse to access user information - use tools instead
 `;
 
 // --- Chat History Management ---
@@ -132,7 +156,21 @@ export const startChatSession = () => {
 };
 
 const cleanJson = (text: string): string => {
-  return text.replace(/```json/g, '').replace(/```/g, '').trim();
+  console.log("[Gemini] Raw Response:", text); // Debug log
+
+  // Remove markdown code blocks
+  let cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+  // Find the first '{' and last '}' to extract the JSON object
+  const firstOpen = cleaned.indexOf('{');
+  const lastClose = cleaned.lastIndexOf('}');
+
+  if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+    cleaned = cleaned.substring(firstOpen, lastClose + 1);
+  }
+
+  console.log("[Gemini] Cleaned JSON:", cleaned); // Debug log
+  return cleaned;
 };
 
 export const sendMessageToGemini = async (message: string, onToolCall: (toolName: string, args: any) => Promise<any>) => {
@@ -143,9 +181,13 @@ export const sendMessageToGemini = async (message: string, onToolCall: (toolName
       parts: [{ text: message }]
     });
 
+    // Force JSON instruction at the end of the conversation
+    const currentHistory = [...chatHistory];
+    // Optional: Add a reminder for JSON if needed, but system instruction should be enough.
+
     const result = await ai.models.generateContent({
       model: modelId,
-      contents: chatHistory,
+      contents: currentHistory,
       systemInstruction,
       tools,
       generationConfig: {
