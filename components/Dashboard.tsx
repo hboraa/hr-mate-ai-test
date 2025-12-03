@@ -226,8 +226,10 @@ const PolicyTab = ({ selectedId, onSelect }: { selectedId?: string, onSelect: (i
         <div className="mt-4 flex justify-end">
           <button
             onClick={() => {
+              console.log('[PDF] Download button clicked');
               // Dynamically import jsPDF to avoid build issues
               import('jspdf').then(({ default: jsPDF }) => {
+                console.log('[PDF] jsPDF loaded successfully');
                 const doc = new jsPDF();
 
                 // Add title
@@ -240,9 +242,10 @@ const PolicyTab = ({ selectedId, onSelect }: { selectedId?: string, onSelect: (i
                 doc.text(lines, 20, 35);
 
                 // Save the PDF
+                console.log('[PDF] Saving PDF:', `${policy.title}.pdf`);
                 doc.save(`${policy.title}.pdf`);
               }).catch(err => {
-                console.error('Failed to load jsPDF:', err);
+                console.error('[PDF] Failed to load jsPDF:', err);
                 alert('PDF 다운로드에 실패했습니다.');
               });
             }}
