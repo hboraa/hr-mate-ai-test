@@ -226,15 +226,25 @@ const PolicyTab = ({ selectedId, onSelect }: { selectedId?: string, onSelect: (i
         <div className="mt-4 flex justify-end">
           <button
             onClick={() => {
-              const blob = new Blob([policy.content], { type: 'text/plain' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${policy.title}.txt`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
+              // Dynamically import jsPDF to avoid build issues
+              import('jspdf').then(({ default: jsPDF }) => {
+                const doc = new jsPDF();
+
+                // Add title
+                doc.setFontSize(16);
+                doc.text(policy.title, 20, 20);
+
+                // Add content with text wrapping
+                doc.setFontSize(11);
+                const lines = doc.splitTextToSize(policy.content, 170);
+                doc.text(lines, 20, 35);
+
+                // Save the PDF
+                doc.save(`${policy.title}.pdf`);
+              }).catch(err => {
+                console.error('Failed to load jsPDF:', err);
+                alert('PDF 다운로드에 실패했습니다.');
+              });
             }}
             className="flex items-center gap-2 text-slate-600 bg-white border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 hover:text-blue-600 transition-colors shadow-sm"
           >
